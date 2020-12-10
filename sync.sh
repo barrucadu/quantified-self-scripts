@@ -32,3 +32,15 @@ fi
 curl "https://www.beeminder.com/api/v1/users/barrucadu/goals/weight.json?datapoints=true&auth_token=${BEEMINDER_AUTH_TOKEN}" > "weight/${TODAY}.json"
 beeminder-weight-to-influx.py < "weight/${TODAY}.json"
 tar c weight | xz -9e > "${QSELF_DIR}/weight.tar.xz"
+
+# trello (+ backup the API response)
+if [[ -e "${QSELF_DIR}/trello.tar.xz" ]]; then
+  tar xf "${QSELF_DIR}/trello.tar.xz"
+  mv "${QSELF_DIR}/trello.tar.xz" "${QSELF_DIR}/trello.tar.xz.1"
+else
+  mkdir trello
+fi
+
+TRELLO_KEY="$TRELLO_KEY" TRELLO_TOKEN="$TRELLO_TOKEN" scrape-trello.py > "trello/${TODAY}.json"
+ls trello | sed 's:^:./trello/:' | sort | trello-to-influx.py
+tar c trello | xz -9e > "${QSELF_DIR}/trello.tar.xz"
