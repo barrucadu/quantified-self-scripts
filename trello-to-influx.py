@@ -33,12 +33,12 @@ for fname in sys.stdin:
                 continue
 
             measurements["count"] = measurements.get("count", 0) + len(trello_list["cards"])
-            measurements[f"list.{list_name}.count"] = len(trello_list["cards"])
+            measurements[f"list.{list_name}.count"] = measurements.get(f"list.{list_name}.count", 0) + len(trello_list["cards"])
 
             for card in trello_list["cards"]:
                 for label in card["labels"]:
                     label_name = label["name"]
-                    measurements[f"count.{label_name}"] = measurements.get(f"count.label.{label_name}", 0) + 1
+                    measurements[f"count.{label_name}"] = measurements.get(f"count.{label_name}", 0) + 1
                     measurements[f"list.{list_name}.count.{label_name}"] = measurements.get(f"list.{list_name}.count.{label_name}", 0) + 1
 
     data.extend([
