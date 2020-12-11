@@ -6,10 +6,18 @@ import influxdb
 import os
 import sys
 
+from datetime import datetime
 from decimal import Decimal
+
+
+def is_weekend_day(yyyy_mm_dd):
+    # 0 = monday .. 6 = sunday
+    return datetime.strptime(yyyy_mm_dd, "%Y-%m-%d").weekday() >= 5
+
 
 aggregated = {}
 first = True
+work_tags = set()
 for row in csv.reader(sys.stdin):
     if first:
         first = False
@@ -18,7 +26,7 @@ for row in csv.reader(sys.stdin):
     _, date, _, _, tag, value, _ = row
     tag_bits = tag.replace("(", "").replace(")", "").split(":")
 
-    aggregated[date] = aggregated.get(date, {})
+    aggregated[date] = aggregated.get(date, { "hours": {} })
 
     all_tags = ["__"]
     if tag_bits[0] == "work":
@@ -36,15 +44,42 @@ for row in csv.reader(sys.stdin):
         all_tags.append(current_tag)
 
     for current_tag in all_tags:
-        aggregated[date][current_tag] = aggregated[date].get(current_tag, Decimal("0")) + Decimal(value)
+        if current_tag.startswith("work:"):
+            work_tags.add(current_tag)
+
+        aggregated[date]["hours"][current_tag] = aggregated[date]["hours"].get(current_tag, Decimal("0")) + Decimal(value)
+
+yesterday = None
+prior_week_day = None
+for date in sorted(aggregated.keys()):
+    aggregated[date]["streaks"] = {}
+
+    for tag in aggregated[date]["hours"].keys():
+        if yesterday is None:
+            aggregated[date]["streaks"][tag] = 1
+        else:
+            aggregated[date]["streaks"][tag] = aggregated[yesterday]["streaks"].get(tag, 0) + 1
+
+    if is_weekend_day(date):
+        # don't break work streaks over the weekend, only an actual
+        # day off will do that
+        if prior_week_day is not None:
+            for tag in work_tags:
+                if tag in aggregated[prior_week_day]["streaks"]:
+                    aggregated[date]["streaks"][tag] = aggregated[prior_week_day]["streaks"]
+    else:
+        prior_week_day = date
+
+    yesterday = date
 
 data = []
-for date, values in aggregated.items():
-    data.append({
-        "measurement": "timedot",
-        "time": f"{date}T00:00:00Z",
-        "fields": { tag: float(duration) for tag, duration in values.items() },
-    })
+for date, measurements in aggregated.items():
+    for key, values in measurements.items():
+        data.append({
+            "measurement": f"timedot.{key}",
+            "time": f"{date}T00:00:00Z",
+            "fields": { tag: float(duration) for tag, duration in values.items() },
+        })
 
 influx = influxdb.InfluxDBClient(database=os.environ["INFLUX_DB"])
 influx.write_points(data)
