@@ -66,7 +66,7 @@ for date in sorted(aggregated.keys()):
         if prior_week_day is not None:
             for tag in work_tags:
                 if tag in aggregated[prior_week_day]["streaks"]:
-                    aggregated[date]["streaks"][tag] = aggregated[prior_week_day]["streaks"]
+                    aggregated[date]["streaks"][tag] = aggregated[prior_week_day]["streaks"][tag]
     else:
         prior_week_day = date
 
