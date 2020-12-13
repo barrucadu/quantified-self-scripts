@@ -10,6 +10,49 @@ from datetime import datetime
 from decimal import Decimal
 
 
+def titlecase(s):
+    return {
+        "ttrpg": "TTRPGs",
+        "line": "Line Management",
+        "lunch": "Lunch Break",
+    }.get(s, s.title())
+
+
+def to_sentence(ss):
+    words = None
+    for s in ss:
+        if words is None:
+            words = [titlecase(s)]
+        else:
+            words.append(f"({s})")
+    return " ".join(words)
+
+
+def tag_names(tag):
+    tag_bits = tag.replace("(", "").replace(")", "").split(":")
+
+    tags = [
+        "__",
+        f"raw.{tag}",
+        f"top.{titlecase(tag_bits[0])}",
+    ]
+
+    if len(tag_bits) > 1:
+        tags.append(f"tag.{tag_bits[0]}.is.{to_sentence(tag_bits[1:])}")
+        tags.append(f"tag.{tag_bits[0]}.cat1.{titlecase(tag_bits[1])}")
+
+        if len(tag_bits) > 2:
+            tags.append(f"tag.{tag_bits[0]}.cat2.{titlecase(tag_bits[2])}")
+        else:
+            tags.append(f"tag.{tag_bits[0]}.cat2.Other")
+
+    return tags
+
+
+def is_work_tag(tag):
+    return tag.startswith("raw.work") or tag.startswith("top.Work") or tag.startswith("tag.work")
+
+
 def is_weekend_day(yyyy_mm_dd):
     # 0 = monday .. 6 = sunday
     return datetime.strptime(yyyy_mm_dd, "%Y-%m-%d").weekday() >= 5
@@ -24,30 +67,14 @@ for row in csv.reader(sys.stdin):
         continue
 
     _, date, _, _, tag, value, _ = row
-    tag_bits = tag.replace("(", "").replace(")", "").split(":")
 
     aggregated[date] = aggregated.get(date, { "hours": {} })
 
-    all_tags = ["__"]
-    if tag_bits[0] == "work":
-        if tag_bits[-1] in ["active", "meetings"]:
-            all_tags.append(f"work:__{tag_bits[-1]}")
-        else:
-            all_tags.append("work:__other")
+    for tag in tag_names(tag):
+        if is_work_tag(tag):
+            work_tags.add(tag)
 
-    current_tag = None
-    for bit in tag_bits:
-        if current_tag is None:
-            current_tag = bit
-        else:
-            current_tag = f"{current_tag}:{bit}"
-        all_tags.append(current_tag)
-
-    for current_tag in all_tags:
-        if current_tag.startswith("work:"):
-            work_tags.add(current_tag)
-
-        aggregated[date]["hours"][current_tag] = aggregated[date]["hours"].get(current_tag, Decimal("0")) + Decimal(value)
+        aggregated[date]["hours"][tag] = aggregated[date]["hours"].get(tag, Decimal("0")) + Decimal(value)
 
 yesterday = None
 prior_week_day = None
@@ -74,11 +101,34 @@ for date in sorted(aggregated.keys()):
 
 data = []
 for date, measurements in aggregated.items():
-    for key, values in measurements.items():
+    for key1, values in measurements.items():
+        # Storing all the measurements as both fields on
+        # `{key1}.as_fields` and more specific measurements on
+        # `{key2}` is kind of horrible... but:
+        #
+        # 1. InfluxQL is really limited and doesn't allow
+        # cross-measurement maths, so having multiple fields in the
+        # same measurement lets me calculate (eg) % leisure hours on
+        # the dashboard without needing to do it in this script.
+        #
+        # 2. Grafana can only do alias patterns on measurement names,
+        # not field names.  So to avoid hard-coding a big list of
+        # names in the dashboard, it's convenient to use multiple
+        # measurements which I can alias by.
+        #
+        # I think using Flux (the new InfluxDB query language) would
+        # let me use measurements only, but I haven't got around to
+        # learning that yet.
+        for key2, value in values.items():
+            data.append({
+                "measurement": f"timedot.{key1}.{key2}",
+                "time": f"{date}T00:00:00Z",
+                "fields": { "value": float(value) },
+            })
         data.append({
-            "measurement": f"timedot.{key}",
+            "measurement": f"timedot.{key1}.as_fields",
             "time": f"{date}T00:00:00Z",
-            "fields": { tag: float(duration) for tag, duration in values.items() },
+            "fields": { key2: float(value) for key2, value in values.items() },
         })
 
 influx = influxdb.InfluxDBClient(database=os.environ["INFLUX_DB"])
