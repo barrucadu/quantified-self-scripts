@@ -15,6 +15,7 @@ def titlecase(s):
         "ttrpg": "TTRPGs",
         "line": "Line Management",
         "lunch": "Lunch Break",
+        "foodprep": "Food Prep",
     }.get(s, s.title())
 
 
