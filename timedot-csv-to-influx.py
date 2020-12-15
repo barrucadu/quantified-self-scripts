@@ -61,6 +61,7 @@ def is_weekend_day(yyyy_mm_dd):
 
 aggregated = {}
 first = True
+all_tags = set()
 work_tags = set()
 for row in csv.reader(sys.stdin):
     if first:
@@ -72,6 +73,7 @@ for row in csv.reader(sys.stdin):
     aggregated[date] = aggregated.get(date, { "hours": {} })
 
     for tag in tag_names(tag):
+        all_tags.add(tag)
         if is_work_tag(tag):
             work_tags.add(tag)
 
@@ -82,20 +84,23 @@ prior_week_day = None
 for date in sorted(aggregated.keys()):
     aggregated[date]["streaks"] = {}
 
-    for tag in aggregated[date]["hours"].keys():
-        if yesterday is None:
-            aggregated[date]["streaks"][tag] = 1
-        else:
-            aggregated[date]["streaks"][tag] = aggregated[yesterday]["streaks"].get(tag, 0) + 1
+    for tag in all_tags:
+        aggregated[date]["hours"][tag] = aggregated[date]["hours"].get(tag, 0)
 
-    if is_weekend_day(date):
-        # don't break work streaks over the weekend, only an actual
-        # day off will do that
-        if prior_week_day is not None:
-            for tag in work_tags:
-                if tag in aggregated[prior_week_day]["streaks"]:
-                    aggregated[date]["streaks"][tag] = aggregated[prior_week_day]["streaks"][tag]
-    else:
+        if aggregated[date]["hours"][tag] == 0:
+            if is_weekend_day(date) and tag in work_tags and prior_week_day is not None:
+                # don't break work streaks over the weekend, only an actual
+                # day off will do that
+                aggregated[date]["streaks"][tag] = aggregated[prior_week_day]["streaks"][tag]
+            else:
+                aggregated[date]["streaks"][tag] = 0
+        else:
+            if yesterday is None:
+                aggregated[date]["streaks"][tag] = 1
+            else:
+                aggregated[date]["streaks"][tag] = aggregated[yesterday]["streaks"][tag] + 1
+
+    if not is_weekend_day(date):
         prior_week_day = date
 
     yesterday = date
@@ -124,12 +129,15 @@ for date, measurements in aggregated.items():
             data.append({
                 "measurement": f"timedot.{key1}.{key2}",
                 "time": f"{date}T00:00:00Z",
-                "fields": { "value": float(value) },
+                "fields": { "value": float(value), "is_weekend_day": "yes" if is_weekend_day(date) else "no" },
             })
+
+        fields = { key2: float(value) for key2, value in values.items() }
+        fields["is_weekend_day"] = "yes" if is_weekend_day(date) else "no"
         data.append({
             "measurement": f"timedot.{key1}.as_fields",
             "time": f"{date}T00:00:00Z",
-            "fields": { key2: float(value) for key2, value in values.items() },
+            "fields": fields,
         })
 
 influx = influxdb.InfluxDBClient(database=os.environ["INFLUX_DB"])
