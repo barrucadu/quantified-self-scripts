@@ -58,6 +58,17 @@ def is_weekend_day(yyyy_mm_dd):
     return datetime.strptime(yyyy_mm_dd, "%Y-%m-%d").weekday() >= 5
 
 
+def is_leave_day(yyyy_mm_dd):
+    return yyyy_mm_dd in CONFIG.get("leave_days", [])
+
+
+def add_extra_fields(date, fields):
+    fields["is_weekend_day"] = "yes" if is_weekend_day(date) else "no"
+    fields["is_work_day"] = "no" if is_weekend_day(date) or is_leave_day(date) else "yes"
+
+    return fields
+
+
 aggregated = {}
 first = True
 all_tags = set()
@@ -128,15 +139,13 @@ for date, measurements in aggregated.items():
             data.append({
                 "measurement": f"timedot.{key1}.{key2}",
                 "time": f"{date}T00:00:00Z",
-                "fields": { "value": float(value), "is_weekend_day": "yes" if is_weekend_day(date) else "no" },
+                "fields": add_extra_fields(date, { "value": float(value) }),
             })
 
-        fields = { key2: float(value) for key2, value in values.items() }
-        fields["is_weekend_day"] = "yes" if is_weekend_day(date) else "no"
         data.append({
             "measurement": f"timedot.{key1}.as_fields",
             "time": f"{date}T00:00:00Z",
-            "fields": fields,
+            "fields": add_extra_fields(date, { key2: float(value) for key2, value in values.items() }),
         })
 
 influx = influxdb.InfluxDBClient(database=os.environ["INFLUX_DB"])
