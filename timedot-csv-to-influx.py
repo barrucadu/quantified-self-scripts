@@ -1,22 +1,21 @@
 #!/usr/bin/env nix-shell
-#! nix-shell -i python -p "python3.withPackages (ps: [ps.influxdb])"
+#! nix-shell -i python -p "python3.withPackages (ps: [ps.influxdb ps.pyyaml])"
 
 import csv
 import influxdb
 import os
 import sys
+import yaml
 
 from datetime import datetime
 from decimal import Decimal
 
+with open(sys.argv[1]) as f:
+    CONFIG = yaml.safe_load(f)
+
 
 def titlecase(s):
-    return {
-        "ttrpg": "TTRPGs",
-        "line": "Line Management",
-        "lunch": "Lunch Break",
-        "foodprep": "Food Prep",
-    }.get(s, s.title())
+    return CONFIG.get("titlecase_overrides", {}).get(s, s.title())
 
 
 def to_sentence(ss):

@@ -19,7 +19,7 @@ export INFLUX_DB="quantified_self"
 echo "drop database ${INFLUX_DB}; create database ${INFLUX_DB};" | influx
 
 # timedot
-LEDGER_FILE="${QSELF_DIR}/t.timedot" hledger reg -O csv | timedot-csv-to-influx.py
+LEDGER_FILE="${QSELF_DIR}/t.timedot" hledger reg -O csv | timedot-csv-to-influx.py "${QSELF_DIR}/t.config"
 
 # weight (+ backup the API response)
 if [[ -e "${QSELF_DIR}/weight.tar.xz" ]]; then
